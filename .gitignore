@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+memory.json
+*.tmp
+.env
+.vscode/
+.idea/
+*.lnk
