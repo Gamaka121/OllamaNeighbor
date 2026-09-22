@@ -8,7 +8,6 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText
 
 import customtkinter as ctk
@@ -753,21 +752,15 @@ def limit_tool_result(value) -> str:
 
 
 def tool_result_payload(value):
-    """Единый контракт для новых dict-инструментов и старых строковых результатов."""
+    """Нормализует результат инструмента без угадывания успеха по тексту."""
     if isinstance(value, dict) and isinstance(value.get("success"), bool):
         return value
 
-    text = str(value)
-    failure_markers = (
-        "ошибка", "не удалось", "не найден", "не указан", "запрещ",
-        "слишком большой", "не является", "требует",
-    )
-    failed = any(marker in text.lower() for marker in failure_markers)
-    return (
-        {"success": False, "error": text}
-        if failed
-        else {"success": True, "message": text}
-    )
+    return {
+        "success": True,
+        "message": str(value),
+        "legacy": True,
+    }
 
 
 def requires_current_datetime(text: str) -> bool:
@@ -788,6 +781,7 @@ def requires_current_datetime(text: str) -> bool:
         r"\bкакое (?:сегодня )?число\b",
         r"\bкакой (?:сейчас )?месяц\b",
         r"\bкакой (?:сейчас )?год\b",
+        r"^сегодня$",
     )
 
     return any(
@@ -863,6 +857,18 @@ class ConversationRuntimeState:
     def clear_choice(self):
         self.pending_choice = None
 
+    def set_action(self, tool_name: str, arguments: dict):
+        self.pending_action = {
+            "tool": str(tool_name),
+            "arguments": dict(arguments or {}),
+        }
+
+    def clear_action(self):
+        self.pending_action = None
+
+    def has_pending_action(self) -> bool:
+        return bool(self.pending_action)
+
     def has_pending_choice(self) -> bool:
         return bool(self.pending_choice and self.pending_choice.get("options"))
 
@@ -927,6 +933,33 @@ def extract_path_from_query(text: str) -> str | None:
         return str(Path.home() / "Documents")
 
     return None
+
+
+def apply_explicit_path_precedence(tool_name: str, arguments: dict, request: str) -> dict:
+    """Явный путь пользователя имеет приоритет над аргументом, сгенерированным LLM."""
+    result = dict(arguments or {})
+    explicit_path = extract_path_from_query(request)
+    if not explicit_path:
+        return result
+
+    path_tools = {
+        "get_path_info": "path",
+        "list_files": "path",
+        "find_file": "path",
+        "read_text_file": "path",
+        "open_folder": "path",
+        "open_file": "path",
+        "create_text_file": "filename",
+        "write_text_file": "filename",
+        "create_folder": "name",
+    }
+    key = path_tools.get(tool_name)
+    if key:
+        result[key] = explicit_path
+        if tool_name in {"read_text_file", "open_file"}:
+            result["path"] = explicit_path
+            result["filename"] = explicit_path
+    return result
 
 
 def to_plain(value):
@@ -1460,6 +1493,9 @@ class NeighborApp(ctk.CTk):
 
         self.active_request = ""
         self.current_task_tools = []
+
+        self.runtime_state.clear_action()
+        self.runtime_state.clear_choice()
 
         # Текущая runtime-история.
         # Это НЕ долговременная память.
@@ -2267,6 +2303,10 @@ class NeighborApp(ctk.CTk):
             tk.END,
         )
 
+        selected, choice_action = self.runtime_state.resolve_choice(text)
+        if selected is not None:
+            text = f"{choice_action}: {selected}" if choice_action else selected
+
         self.append_chat(
             "Ты",
             text,
@@ -2533,49 +2573,74 @@ class NeighborApp(ctk.CTk):
         if permission == SAFE:
             return True
 
-        if permission == NORMAL:
-            return True
-
         argument_text = json.dumps(
             arguments,
             ensure_ascii=False,
             indent=2,
         )
 
-        result = {
-            "value": None,
-        }
-
+        self.runtime_state.set_action(tool_name, arguments)
+        result = {"value": False}
         event = threading.Event()
 
         def show():
-            answer = messagebox.askyesno(
-                "Подтверждение действия",
-                (
-                    "Neighbor хочет выполнить опасное действие:\n\n"
-                    f"Инструмент: {tool_name}\n\n"
-                    f"Параметры:\n{argument_text}\n\n"
-                    "Разрешить?"
-                ),
-                parent=self,
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Подтверждение действия")
+            dialog.geometry("560x360")
+            dialog.resizable(False, False)
+            dialog.transient(self)
+            dialog.grab_set()
+
+            ctk.CTkLabel(
+                dialog,
+                text="Neighbor запрашивает подтверждение",
+                font=ctk.CTkFont(size=18, weight="bold"),
+            ).pack(padx=24, pady=(24, 12))
+
+            details = ctk.CTkTextbox(dialog, height=190, wrap="word")
+            details.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+            details.insert(
+                "1.0",
+                f"Действие: {tool_name}\n\n"
+                f"Параметры:\n{argument_text}\n\n"
+                "Разрешить выполнение?",
             )
+            details.configure(state="disabled")
 
-            result["value"] = answer
-            event.set()
+            buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+            buttons.pack(fill="x", padx=24, pady=(0, 20))
 
-        self.after(
-            0,
-            show,
-        )
+            def finish(answer):
+                result["value"] = bool(answer)
+                self.runtime_state.clear_action()
+                try:
+                    dialog.grab_release()
+                    dialog.destroy()
+                except Exception:
+                    pass
+                event.set()
 
-        if not event.wait(
-            CONFIRM_TIMEOUT
-        ):
+            ctk.CTkButton(
+                buttons,
+                text="Разрешить",
+                command=lambda: finish(True),
+            ).pack(side="right", padx=(8, 0))
+
+            ctk.CTkButton(
+                buttons,
+                text="Отмена",
+                command=lambda: finish(False),
+            ).pack(side="right")
+
+            dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+
+        self.after(0, show)
+
+        if not event.wait(CONFIRM_TIMEOUT):
+            self.runtime_state.clear_action()
             return False
 
-        return bool(
-            result["value"]
-        )
+        return bool(result["value"])
 
     def execute_tool(
         self,
@@ -2678,6 +2743,12 @@ class NeighborApp(ctk.CTk):
                     "arguments",
                     {},
                 )
+            )
+
+            arguments = apply_explicit_path_precedence(
+                name,
+                arguments,
+                self.active_request,
             )
 
             if not name:
