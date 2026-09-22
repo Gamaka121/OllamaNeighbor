@@ -1,0 +1,11 @@
+beautifulsoup4>=4.12,<5
+customtkinter>=5.2,<6
+ollama>=0.4,<1
+openpyxl>=3.1,<4
+psutil>=6,<8
+pyautogui>=0.9,<1
+pyperclip>=1.9,<2
+python-docx>=1.1,<2
+pywin32>=308,<312
+pywinauto>=0.6,<1
+requests>=2.32,<3

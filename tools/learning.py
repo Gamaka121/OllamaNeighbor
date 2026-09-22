@@ -32,6 +32,7 @@ RUNTIME_WORDS = (
 RUNTIME_TOOLS = {
     "get_current_datetime", "get_pc_info", "get_processes",
     "web_search", "read_webpage", "play_yt_music",
+    "get_exchange_rate", "get_weather_forecast",
 }
 
 

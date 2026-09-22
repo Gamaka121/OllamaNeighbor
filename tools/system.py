@@ -8,6 +8,12 @@ import platform
 import psutil
 
 
+WEEKDAYS_RU = (
+    "Понедельник", "Вторник", "Среда", "Четверг",
+    "Пятница", "Суббота", "Воскресенье"
+)
+
+
 def get_pc_info():
     cpu = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
@@ -69,14 +75,14 @@ def get_current_datetime():
     """
 
     now = datetime.now().astimezone()
-
+    weekday_ru = WEEKDAYS_RU[now.weekday()]
     timezone_name = now.tzname() or "локальный"
 
     return (
         "ТЕКУЩИЕ ДАТА И ВРЕМЯ КОМПЬЮТЕРА\n"
         f"Дата: {now.strftime('%d.%m.%Y')}\n"
         f"Время: {now.strftime('%H:%M:%S')}\n"
-        f"День недели: {now.strftime('%A')}\n"
+        f"День недели: {weekday_ru}\n"
         f"Часовой пояс: {timezone_name}\n"
         f"UTC-смещение: {now.strftime('%z')}\n"
         f"ISO 8601: {now.isoformat()}"

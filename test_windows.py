@@ -1,29 +1,16 @@
-import subprocess
-import time
+"""Ручная проверка Windows-интеграции.
 
-from pywinauto import Desktop
-from pywinauto.keyboard import send_keys
+Это не unit-тест: запуск требует интерактивного рабочего стола и открывает
+Блокнот. Поэтому модуль не выполняет побочных действий при импорте.
+"""
 
-
-def open_notepad_and_type(text):
-    subprocess.Popen(["notepad.exe"])
-
-    time.sleep(2)
-
-    window = Desktop(backend="uia").window(
-        title_re=r".*(Notepad|Блокнот).*"
-    )
-
-    window.wait("visible", timeout=10)
-    window.set_focus()
-
-    time.sleep(0.5)
-
-    send_keys(text, with_spaces=True)
-
-    print("Текст успешно отправлен в Блокнот.")
+from tools.windows import open_notepad
 
 
-open_notepad_and_type(
-    "Привет! Это текст, который мой локальный AI отправил в Блокнот."
-)
+def manual_smoke_test():
+    result = open_notepad("Привет! Это текст, который отправил локальный AI.")
+    print(result)
+
+
+if __name__ == "__main__":
+    manual_smoke_test()

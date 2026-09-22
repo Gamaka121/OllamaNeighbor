@@ -1,12 +1,21 @@
 import webbrowser
+from urllib.parse import urlparse
 
 
 def open_browser(url):
-    if not url.startswith(
-        ("http://", "https://")
-    ):
+    url = str(url or "").strip()
+    if not url:
+        return {"success": False, "error": "Не указан адрес сайта."}
+
+    if "://" not in url:
         url = "https://" + url
 
-    webbrowser.open(url)
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return {"success": False, "error": "Разрешены только корректные HTTP(S)-адреса."}
 
-    return f"Открыт сайт: {url}"
+    opened = webbrowser.open(url)
+
+    if not opened:
+        return {"success": False, "error": "Windows не приняла команду открыть браузер.", "data": {"url": url}}
+    return {"success": True, "message": "Команда открытия сайта передана браузеру.", "data": {"url": url}}
