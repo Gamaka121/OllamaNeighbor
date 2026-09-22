@@ -19,6 +19,7 @@ class RoutingTests(unittest.TestCase):
     def test_routes_current_datetime_queries_deterministically(self):
         self.assertTrue(requires_current_datetime("сегодня"))
         self.assertTrue(requires_current_datetime("какой сегодня день"))
+        self.assertTrue(requires_current_datetime("какой сейчас час"))
         self.assertTrue(requires_current_datetime("который сейчас час"))
         self.assertFalse(requires_current_datetime("расскажи о сегодняшнем дне"))
 
