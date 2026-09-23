@@ -1,4 +1,4 @@
-"""Safe filesystem operations for Ollama Neighbor."""
+"""Filesystem operations for Ollama Neighbor."""
 
 from __future__ import annotations
 
@@ -12,8 +12,12 @@ DESKTOP_DIR = Path.home() / "Desktop"
 DOCUMENTS_DIR = Path.home() / "Documents"
 DOWNLOADS_DIR = Path.home() / "Downloads"
 
-READ_ROOTS = (PROJECT_DIR, NOTES_DIR, DESKTOP_DIR, DOCUMENTS_DIR, DOWNLOADS_DIR)
-WRITE_ROOTS = (PROJECT_DIR, NOTES_DIR, DESKTOP_DIR, DOCUMENTS_DIR, DOWNLOADS_DIR)
+# Neighbor может читать всю файловую систему Windows. Изменение и удаление
+# тоже технически разрешены, но вызываются только после явного UI-подтверждения
+# в main.py. Ограничение .. и UNC-путей сохраняется.
+WINDOWS_ROOT = Path("C:\\")
+READ_ROOTS = (WINDOWS_ROOT,)
+WRITE_ROOTS = (WINDOWS_ROOT,)
 MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024
 MAX_FIND_RESULTS = 100
 
@@ -60,13 +64,12 @@ def _normalize_path(value, default_root=None, allowed_roots=None):
     if default_root is None:
         default_root = _notes_dir()
     if allowed_roots is None:
-        allowed_roots = globals().get("READ_ROOTS", (PROJECT_DIR, NOTES_DIR))
+        allowed_roots = globals().get("READ_ROOTS", (WINDOWS_ROOT,))
 
     raw = str(value or "").strip().strip("'\"").replace("/", "\\")
     if not raw:
         return None, "Не указан путь."
 
-    # Windows drive root e.g. "C:" -> "C:\"
     if len(raw) == 2 and raw[0].isalpha() and raw[1] == ":":
         raw = raw + "\\"
 
@@ -77,10 +80,7 @@ def _normalize_path(value, default_root=None, allowed_roots=None):
         return None, "UNC-пути не поддерживаются."
 
     special = _extract_special_folder(raw)
-    if special is not None:
-        candidate = special
-    else:
-        candidate = Path(raw)
+    candidate = special if special is not None else Path(raw)
 
     if ".." in candidate.parts:
         return None, "Пути с '..' не разрешены."
@@ -102,17 +102,13 @@ def _normalize_path(value, default_root=None, allowed_roots=None):
 def _read_path(path=None):
     if path is None or not str(path).strip():
         return _notes_dir(), None
-    return _normalize_path(path, _notes_dir())
+    return _normalize_path(path, _notes_dir(), READ_ROOTS)
 
 
 def _write_path(filename):
     if filename is None or not str(filename).strip():
         return None, "Не указан путь или имя файла."
-    allowed = list(globals().get("WRITE_ROOTS", (PROJECT_DIR, NOTES_DIR, DESKTOP_DIR, DOCUMENTS_DIR, DOWNLOADS_DIR)))
-    notes = _notes_dir()
-    if not any(_is_within(notes, r) for r in allowed):
-        allowed.append(notes)
-    return _normalize_path(filename, notes, allowed)
+    return _normalize_path(filename, _notes_dir(), WRITE_ROOTS)
 
 
 def get_files_directory():
