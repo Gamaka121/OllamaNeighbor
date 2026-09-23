@@ -33,6 +33,7 @@ def get_pc_info():
 
 
 def get_processes():
+    """Возвращает процессы, отсортированные по потреблению ОЗУ."""
     processes = []
 
     for process in psutil.process_iter(
@@ -40,29 +41,48 @@ def get_processes():
     ):
         try:
             info = process.info
+            memory_percent = float(info.get("memory_percent") or 0)
+            name = info.get("name") or "<без имени>"
+            pid = info.get("pid")
 
             processes.append(
                 (
-                    info["memory_percent"] or 0,
-                    info["pid"],
-                    info["name"],
+                    memory_percent,
+                    pid,
+                    name,
                 )
             )
 
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
 
-    processes.sort(reverse=True)
+    processes.sort(key=lambda item: item[0], reverse=True)
 
-    result = "Процессы:\n"
+    if not processes:
+        return {
+            "success": False,
+            "error": "Не удалось получить список процессов."
+        }
 
-    for memory, pid, name in processes[:15]:
-        result += (
-            f"{name} | PID {pid} | "
-            f"RAM {memory:.1f}%\n"
-        )
+    top = processes[:15]
+    top_process = top[0]
 
-    return result
+    return {
+        "success": True,
+        "top_process": {
+            "name": top_process[2],
+            "pid": top_process[1],
+            "memory_percent": round(top_process[0], 1),
+        },
+        "processes": [
+            {
+                "name": name,
+                "pid": pid,
+                "memory_percent": round(memory, 1),
+            }
+            for memory, pid, name in top
+        ],
+    }
 
 
 def get_current_datetime():
