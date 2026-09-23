@@ -33,23 +33,32 @@ def get_pc_info():
 
 
 def get_processes():
-    """Возвращает процессы, отсортированные по потреблению ОЗУ."""
+    """Возвращает текущие процессы, отсортированные по потреблению ОЗУ.
+
+    Это read-only системный запрос. Для вопросов вроде
+    «что больше всего жрёт/использует ОЗУ», «какая программа съедает память»,
+    «что больше всего потребляет оперативку» результатом top_process является
+    первый и наиболее важный ответ.
+    """
     processes = []
 
     for process in psutil.process_iter(
-        ["pid", "name", "memory_percent"]
+        ["pid", "name", "memory_percent", "memory_info"]
     ):
         try:
             info = process.info
             memory_percent = float(info.get("memory_percent") or 0)
             name = info.get("name") or "<без имени>"
             pid = info.get("pid")
+            memory_info = info.get("memory_info")
+            rss_bytes = int(getattr(memory_info, "rss", 0) or 0)
 
             processes.append(
                 (
                     memory_percent,
                     pid,
                     name,
+                    rss_bytes,
                 )
             )
 
@@ -73,14 +82,16 @@ def get_processes():
             "name": top_process[2],
             "pid": top_process[1],
             "memory_percent": round(top_process[0], 1),
+            "memory_mb": round(top_process[3] / (1024 ** 2), 1),
         },
         "processes": [
             {
                 "name": name,
                 "pid": pid,
                 "memory_percent": round(memory, 1),
+                "memory_mb": round(rss_bytes / (1024 ** 2), 1),
             }
-            for memory, pid, name in top
+            for memory, pid, name, rss_bytes in top
         ],
     }
 
